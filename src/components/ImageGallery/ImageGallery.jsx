@@ -1,4 +1,4 @@
-import { Component } from 'react';
+import { useState, useEffect } from 'react';
 
 import { fetchRequest } from 'services/api';
 import { Loader } from 'components/Loader/Loader';
@@ -8,129 +8,98 @@ import { StyledGallery } from './ImageGallery.styled';
 import { Button } from 'components/Button/Button';
 import { scrollToBottom } from 'utils/scroll';
 
-export class ImageGallery extends Component {
-  state = {
-    request: [],
-    modal: {
-      isOpen: false,
-      data: null,
-      tags: '',
-    },
-    error: null,
-    page: 1,
-    status: 'idle',
-    hasMore: false,
-    totalImages: 0,
-  };
 
-  componentDidUpdate(prevProps, prevState) {
-    const prevRequest = prevProps.requestName;
-    const nextRequest = this.props.requestName;
+export function ImageGallery({ requestName }) {
+  const [request, setRequest] = useState([]);
+  const [error, setError] = useState(null);
+  const [page, setPage] = useState(1);
+  const [status, setStatus] = useState('idle');
+  const [hasMore, setHasMore] = useState(false);
+  const [image, setImage] = useState('');
+  const [showModal, setShowModal] = useState(false);
 
-    if (prevRequest !== nextRequest) {
-      this.setState({ request: [] });
-      this.setState({ status: 'pending' });
-
-      this.getRequestedImages(nextRequest);
+  useEffect(() => {
+    if (!requestName) {
+      return;
     }
-  }
 
-  getRequestedImages = async (name, page) => {
+    setRequest([]);
+    setStatus('pending');
+
+    getRequestedImages(requestName, page);
+  }, [page, requestName]);
+
+  const getRequestedImages = async (name, page) => {
+    if (!name) return;
+    setStatus('pending');
+
     try {
-      this.setState({ status: 'pending' });
-      const {hits, totalHits} = await fetchRequest(name, page);
-
-
+      setStatus('pending');
+      const { hits, totalHits } = await fetchRequest(name, page);
+      if (!name) return;
 
       if (hits.length > 0) {
-        this.setState(prevState => ({
-          request: [...prevState.request, ...hits],
-          status: 'resolved',
-          page: prevState.page + 1,
-          hasMore: this.state.page < Math.ceil(totalHits / 12)
-        
-        }));
-      } else if (this.state.request === 1) {
-        this.setState({ status: 'resolved', hasMore: false });
+        setRequest(prevState => [...prevState, ...hits]);
+        setStatus('resolved');
+        setHasMore(page < Math.ceil(totalHits / 12));
+      } else if (page === 1) {
+        setHasMore(false);
+        setStatus('resolved');
       } else {
-        this.setState({ status: 'resolved', hasMore: false });
+        setHasMore(false);
+        setStatus('resolved');
       }
 
       if (totalHits === 0) {
         throw new Error("Ooops, we couldn't find such images");
       }
     } catch (error) {
-      this.setState({
-        error: error.message,
-        status: 'rejected',
-        hasMore: false,
-      });
+      setError(error.message);
+      setStatus('rejected');
+      setHasMore(false);
     }
   };
 
-  onLoadMore = () => {
-    const { page } = this.state;
-    const { requestName } = this.props;
-    this.getRequestedImages(requestName, page);
+  const toggleModal = image => {
+    setShowModal(!showModal);
+    setImage(image);
+  };
+
+  const onLoadMore = () => {
+    setPage(page + 1);
     scrollToBottom();
   };
 
-  onOpenModal = (modalData, tags) => {
-    this.setState({
-      modal: {
-        isOpen: true,
-        data: modalData,
-        tags,
-      },
-    });
-  };
+  const showImg = Array.isArray(request) && request.length;
 
-  onCloseModal = () => {
-    this.setState({
-      modal: {
-        isOpen: false,
-        data: null,
-      },
-    });
-  };
+  if (status === 'pending') {
+    return <Loader />;
+  }
 
-  render() {
-    const showImg =
-      Array.isArray(this.state.request) && this.state.request.length;
+  if (status === 'rejected') {
+    return <h3>{error}</h3>;
+  }
 
-    const { modal, request, error, status, hasMore } = this.state;
-
-    if (status === 'pending') {
-      return <Loader />;
-    }
-
-    if (status === 'rejected') {
-      return <h3>{error}</h3>;
-    }
-
-    if (status === 'resolved') {
-      return (
-        <>
-          {showImg && (
-            <>
-              <h2>Result "{this.props.requestName}"</h2>
-              <StyledGallery>
-                <ImageGalleryItem
-                  data={this.state.request}
-                  onOpenModal={this.onOpenModal}
-                />
-              </StyledGallery>
-            </>
-          )}
-          {!hasMore && <h3>There's no more images to load</h3>}
-          {hasMore && request && <Button onClick={this.onLoadMore} />}
-          {modal.isOpen && (
-            <Modal onCloseModal={this.onCloseModal}>
-              <img src={modal.data} alt={modal.tags} />
-            </Modal>
-          )}
-        </>
-      );
-    }
+  if (status === 'resolved') {
+    return (
+      <>
+        {showImg && (
+          <>
+            <h2>Result "{requestName}"</h2>
+            <StyledGallery>
+              <ImageGalleryItem data={request} onOpenModal={toggleModal} />
+            </StyledGallery>
+          </>
+        )}
+        {!hasMore && <h3>There's no more images to load</h3>}
+        {hasMore && request && <Button onClick={onLoadMore} />}
+        {showModal && (
+          <Modal onCloseModal={toggleModal}>
+            <img src={image} alt="" />
+          </Modal>
+        )}
+      </>
+    );
   }
 }
+
